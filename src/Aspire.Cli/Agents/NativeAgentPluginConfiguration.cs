@@ -161,32 +161,6 @@ internal static class NativeAgentPluginConfiguration
                     : []));
             }
         }
-        else if (mode is AspireSkillsMode.Bundled)
-        {
-            // A registration in either visible scope competes with copied skills. Inspect
-            // it before bundle/tool acquisition without disabling or migrating anything.
-            var reader = new AgentConfigurationJson.ReadContext();
-            foreach (var client in request.Clients)
-            {
-                if (client.UsesSkillsCatalog &&
-                    environment.GetEnvironmentVariable("OPENCODE_CONFIG_CONTENT") is { Length: > 0 } inline &&
-                    HasAspireCatalog(AgentConfigurationJson.ParseObject(Encoding.UTF8.GetBytes(inline))))
-                {
-                    return AgentCommandStrings.InitCommand_NativeSkillsConflict;
-                }
-                foreach (var path in PluginSettings(client, request, executionContext, environment))
-                {
-                    var config = await reader.ReadOptionalAsync(path, cancellationToken);
-                    if (config is not null && (client.UsesSkillsCatalog
-                        ? HasAspireCatalog(config)
-                        : AspireSkillsPluginConfiguration.HasPlugin(config)))
-                    {
-                        return AgentCommandStrings.InitCommand_NativeSkillsConflict;
-                    }
-                }
-            }
-        }
-
         return null;
     }
 
@@ -311,28 +285,6 @@ internal static class NativeAgentPluginConfiguration
         return AgentConfigurationEdit.Applied();
     }
 
-    private static bool HasAspireCatalog(JsonObject root)
-    {
-        if (!root.TryGetPropertyValue("skills", out var skills))
-        {
-            return false;
-        }
-
-        JsonArray? sources;
-        if (skills is JsonObject v1)
-        {
-            AgentConfigurationJson.OptionalStrings(v1, "paths");
-            sources = AgentConfigurationJson.OptionalStrings(v1, "urls");
-        }
-        else
-        {
-            sources = skills is JsonArray array && array.All(value => AgentConfigurationJson.String(value) is not null)
-                ? array : throw AgentConfigurationJson.Shape("skills");
-        }
-
-        return sources?.Any(value => CatalogSchema(AgentConfigurationJson.String(value)) is not null) is true;
-    }
-
     private static int? CatalogSchema(string? source)
     {
         if (!Uri.TryCreate(source, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps ||
@@ -349,7 +301,6 @@ internal static class NativeAgentPluginConfiguration
 
 internal enum AspireSkillsMode
 {
-    Bundled,
     Native,
     None
 }
